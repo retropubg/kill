@@ -6,7 +6,6 @@ from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from utils.data_manager import DataManager
 from services.stripe_service import StripeService
 
-
 class UserHandlers:
     def __init__(self, data_manager: DataManager, stripe_service: StripeService):
         self.data_manager = data_manager
@@ -65,26 +64,43 @@ class UserHandlers:
                     await message.reply_text("❌ Provide a valid card in the format: /kill cc|mm|yyyy|cvv or /kill cc/mm/yyyy/cvv")
                     return
 
-                cc, mm, yyyy, original_cvv = card_details.split("|")  # Keep the original CVV for the response
+                cc, mm, yyyy, cvv = card_details.split("|")
 
-                # Process card 10 times with random CVVs
-                for _ in range(10):
-                    random_cvv = f"{random.randint(100, 999):03}"  # Generate a random 3-digit CVV
-                    card_to_check = f"{cc}|{mm}|{yyyy}|{random_cvv}"
-                    result = self.stripe_service.check_card(card_to_check)
-                    # Simulate delay if necessary (e.g., for Stripe API rate limits)
-                    await asyncio.sleep(1)
-
-                response = (
-                    "┏━━━━━━━⍟\n"
-                    "┃**#CC_KILLER☠**\n"
-                    "┗━━━━━━━━━━━⊛\n\n"
-                    f"**💳 CC: `{cc}|{mm}|{yyyy}|{original_cvv}`**\n"  # Use the original CVV here
-                    f"**✨ STATUS: Completed 🎉**\n"
-                    f"**🕒 KILL TIME: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}**\n"
-                    "**🤖 BOT BY: @vclubdrop**\n\n"
-                    "**✅ Thank you for using the bot! Join our Channel for more updates!**"
-                )
+                # Process card and get result
+                result = self.stripe_service.check_card(card_details)
+                
+                # Format the response
+                if "Do Not Honor" in result:
+                    response = (
+                        "┏━━━━━━━⍟\n"
+                        "┃**#CC_KILLER☠**\n"
+                        "┗━━━━━━━━━━━⊛\n\n"
+                        f"**💳 CC: `{cc}|{mm}|{yyyy}|{cvv}`**\n\n"
+                        "**❌ Do Not Honor Error**\n\n"
+                        "**Possible Reasons:**\n"
+                        "• Insufficient funds in account\n"
+                        "• Bank blocked transaction\n"
+                        "• Card restrictions active\n"
+                        "• Daily limit exceeded\n"
+                        "• International transactions blocked\n\n"
+                        "**Solutions:**\n"
+                        "1. Check account balance\n"
+                        "2. Contact bank for verification\n"
+                        "3. Try different card\n"
+                        "4. Check card restrictions\n\n"
+                        f"**🕒 KILL TIME: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}**\n"
+                        "**🤖 BOT BY: @vclubdrop**"
+                    )
+                else:
+                    response = (
+                        "┏━━━━━━━⍟\n"
+                        "┃**#CC_KILLER☠**\n"
+                        "┗━━━━━━━━━━━⊛\n\n"
+                        f"**💳 CC: `{cc}|{mm}|{yyyy}|{cvv}`**\n"
+                        f"**✨ STATUS: {result}**\n"
+                        f"**🕒 KILL TIME: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}**\n"
+                        "**🤖 BOT BY: @vclubdrop**"
+                    )
 
                 keyboard = InlineKeyboardMarkup([
                     [InlineKeyboardButton("Join Channel", url="https://t.me/+tjKMDddCeSFkNjFl")],
@@ -103,7 +119,32 @@ class UserHandlers:
 
         @app.on_message(filters.command("info"))
         async def info_command(client, message: Message):
-            user_id = str(message.from_user.id)
-            credits = self.data_manager.get_user_credits(user_id)
-            await message.reply_text(f"ℹ️ **Your Credits:** `{credits}`\n\n**✅ Stay tuned for updates!**")
+            try:
+                user_id = str(message.from_user.id)
+                username = message.from_user.username or "No username"
+                credits = self.data_manager.get_user_credits(user_id)
+                is_owner = user_id == str(self.data_manager.owner_id)
+                is_authorized = username in self.data_manager.get_authorized_users()
 
+                status = "👑 Owner" if is_owner else "⭐️ VIP User" if is_authorized else "👤 Regular User"
+                credits_display = "♾️ Unlimited" if is_owner or is_authorized else f"🎟️ {credits}"
+
+                info_text = (
+                    "┏━━━ 👤 **User Info** ━━━┓\n"
+                    f"┣ **ID:** `{user_id}`\n"
+                    f"┣ **Username:** @{username}\n"
+                    f"┣ **Status:** {status}\n"
+                    f"┣ **Credits:** {credits_display}\n"
+                    "┗━━━━━━━━━━━━━━━━━┛\n\n"
+                    "**Need more credits?**\n"
+                    "Contact @vclubdrop to purchase!"
+                )
+
+                keyboard = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("Buy Credits", url="https://t.me/vclubdrop")],
+                    [InlineKeyboardButton("Join Channel", url="https://t.me/+tjKMDddCeSFkNjFl")]
+                ])
+
+                await message.reply_text(info_text, reply_markup=keyboard)
+            except Exception as e:
+                await message.reply_text(f"❌ An error occurred while fetching your information: {str(e)}")
