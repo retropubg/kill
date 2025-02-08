@@ -31,11 +31,11 @@ class UserHandlers:
         @app.on_message(filters.command("buy"))
         async def buy_command(client, message: Message):
             keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("Contact Owner", url="https://t.me/itZdaxx")],
-                [InlineKeyboardButton("Join Channel", url="https://t.me/+tjKMDddCeSFkNjFl")]
+                [InlineKeyboardButton("Contact Owner", url="https://t.me/eretro_7")],
+                [InlineKeyboardButton("Join Channel", url="https://t.me/+L0fY4QL4W1kwNDJh")]
             ])
             await message.reply_text(
-                "🛒 **Buy Credits**\n\nContact @vclubdrop for purchasing credits.",
+                "🛒 **Buy Credits**\n\nContact @eretro_7 for purchasing credits.",
                 reply_markup=keyboard
             )
 
@@ -103,8 +103,8 @@ class UserHandlers:
                     )
 
                 keyboard = InlineKeyboardMarkup([
-                    [InlineKeyboardButton("Join Channel", url="https://t.me/+tjKMDddCeSFkNjFl")],
-                    [InlineKeyboardButton("Buy Credits", url="https://t.me/itzDaxx")]
+                    [InlineKeyboardButton("Join Channel", url="https://t.me/+L0fY4QL4W1kwNDJh")],
+                    [InlineKeyboardButton("Buy Credits", url="https://t.me/eretro_7")]
                 ])
 
                 if not is_owner:
