@@ -1,6 +1,6 @@
 class DataManager:
     def __init__(self):
-        self.owner_id = "7716352578"  # Replace with your actual owner ID
+        self.owner_id = "6699273462"  # Replace with your actual owner ID
         self.authorized_users = ["authorized_username1", "authorized_username2"]  # Replace with your authorized usernames
 
     def get_authorized_users(self):
