@@ -89,7 +89,7 @@ class UserHandlers:
                         "3. Try different card\n"
                         "4. Check card restrictions\n\n"
                         f"**🕒 KILL TIME: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}**\n"
-                        "**🤖 BOT BY: @vclubdrop**"
+                        "**🤖 BOT BY: @eretro_7"
                     )
                 else:
                     response = (
@@ -99,7 +99,7 @@ class UserHandlers:
                         f"**💳 CC: `{cc}|{mm}|{yyyy}|{cvv}`**\n"
                         f"**✨ STATUS: {result}**\n"
                         f"**🕒 KILL TIME: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}**\n"
-                        "**🤖 BOT BY: @vclubdrop**"
+                        "**🤖 BOT BY: @eretro_7"
                     )
 
                 keyboard = InlineKeyboardMarkup([
@@ -137,7 +137,7 @@ class UserHandlers:
                     f"┣ **Credits:** {credits_display}\n"
                     "┗━━━━━━━━━━━━━━━━━┛\n\n"
                     "**Need more credits?**\n"
-                    "Contact @vclubdrop to purchase!"
+                    "Contact @eretro_7 to purchase!"
                 )
 
                 keyboard = InlineKeyboardMarkup([
